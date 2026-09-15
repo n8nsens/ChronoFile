@@ -1,0 +1,29 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+*.db
+*.log
+*.tmp
+
+# Build output
+x64/
+Debug/
+Release/
+*.exe
+*.obj
+*.ilk
+*.pdb
+*.tlog
+*.lastbuildstate
+
+# CMake
+build/
+CMakeCache.txt
+CMakeFiles/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini

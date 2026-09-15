@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="ChronoFile.vcxproj" Id="fe2d6e6c-d500-43d1-a5aa-a6a9c88e075d" />
+</Solution>
