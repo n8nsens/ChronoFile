@@ -8,13 +8,19 @@
 #include <cwchar>
 #include <wincrypt.h>
 #include <vector>
+#include <map>
+#include <chrono>
 
 constexpr DWORD BUFFER_SIZE = 64 * 1024;
-const wchar_t* DEFAULT_WATCH_PATH = L"D:/Kours_SP_3/Test";
+const wchar_t* DEFAULT_WATCH_PATH = L"D:\\Kours_SP_3\\Test";
 volatile bool g_running = true;
 
 // Глобальный хэндл лог-файла
 HANDLE g_hLogFile = INVALID_HANDLE_VALUE;
+
+// Словарь ожидающих обработки файлов: Ключ = Абсолютный путь, Значение = Время последнего изменения
+std::map<std::wstring, std::chrono::steady_clock::time_point> g_pendingFiles;
+const auto DEBOUNCE_DURATION = std::chrono::seconds(5); // Ждем 5 секунд тишины
 
 BOOL WINAPI ConsoleCtrlHandler(DWORD ctrlType) {
     if (ctrlType == CTRL_C_EVENT || ctrlType == CTRL_CLOSE_EVENT) {
@@ -186,6 +192,44 @@ std::wstring ComputeSHA256(const std::wstring& filePath) {
     return result;
 }
 
+// Проверяет файлы, которые "успокоились" (прошло 5 сек), хэширует их и сохраняет в storage/hot/
+void ProcessPendingFiles(const std::wstring& watchPath) {
+    auto now = std::chrono::steady_clock::now();
+
+    for (auto it = g_pendingFiles.begin(); it != g_pendingFiles.end(); ) {
+        // Если прошло больше 5 секунд с последнего изменения
+        if (now - it->second >= DEBOUNCE_DURATION) {
+            std::wstring absPath = it->first;
+
+            // 1. Считаем хэш
+            std::wstring hash = ComputeSHA256(absPath);
+
+            if (!hash.empty()) {
+                // 2. Создаем папки хранения, если их нет
+                CreateDirectoryW(L"storage", nullptr);
+                CreateDirectoryW(L"storage/hot", nullptr);
+
+                // 3. Формируем путь: storage/hot/{хэш}.bin
+                std::wstring destPath = L"storage/hot\\" + hash + L".bin";
+
+                // 4. Копируем файл (FALSE = перезаписывать, если вдруг уже есть)
+                if (CopyFileW(absPath.c_str(), destPath.c_str(), FALSE)) {
+                    wprintf(L"[STORAGE] Сохранено: %ls -> %ls\n", absPath.c_str(), destPath.c_str());
+                    LogToFile(L"SAVED", absPath);
+                }
+                else {
+                    wprintf(L"[STORAGE] Ошибка копирования %ls (Код: %lu)\n", absPath.c_str(), GetLastError());
+                }
+            }
+            // Удаляем файл из словаря ожидания
+            it = g_pendingFiles.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+}
+
 std::wstring GetFileName(const std::wstring& path) {
     size_t pos = path.find_last_of(L"\\/");
     return (pos == std::wstring::npos) ? path : path.substr(pos + 1);
@@ -301,6 +345,10 @@ int wmain(int argc, wchar_t** argv) {
             CancelIo(hDir);
             WaitForSingleObject(overlapped.hEvent, INFINITE);
             GetOverlappedResult(hDir, &overlapped, &bytesReturned, FALSE);
+
+            // ПРОВЕРЯЕМ ОЖИДАЮЩИЕ ФАЙЛЫ КАЖДЫЕ 500 МС
+            ProcessPendingFiles(watchPath);
+
             continue;
         }
 
@@ -331,8 +379,25 @@ int wmain(int argc, wchar_t** argv) {
             std::wstring filename(info->FileName, charCount);
 
             if (!ShouldIgnoreFile(filename)) {
-                LogEvent(ActionToString(info->Action), filename);  // в консоль
-                LogToFile(ActionToString(info->Action), filename); // в файл через WinAPI
+                // Формируем абсолютный путь к файлу
+                std::wstring absPath = std::wstring(watchPath) + L"\\" + filename;
+
+                // Если файл добавлен или изменен — добавляем/обновляем его в словаре ожидания
+                if (info->Action == FILE_ACTION_ADDED || info->Action == FILE_ACTION_MODIFIED) {
+                    g_pendingFiles[absPath] = std::chrono::steady_clock::now();
+                    LogEvent(ActionToString(info->Action), filename);
+                    LogToFile(ActionToString(info->Action), filename);
+                }
+                // Если удален — удаляем из словаря, чтобы не хэшировать несуществующий файл
+                else if (info->Action == FILE_ACTION_REMOVED) {
+                    g_pendingFiles.erase(absPath);
+                    LogEvent(ActionToString(info->Action), filename);
+                    LogToFile(ActionToString(info->Action), filename);
+                }
+                else {
+                    LogEvent(ActionToString(info->Action), filename);
+                    LogToFile(ActionToString(info->Action), filename);
+                }
             }
 
             if (info->NextEntryOffset == 0) break;
