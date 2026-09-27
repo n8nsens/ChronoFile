@@ -13,10 +13,48 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="utils">
+      <UniqueIdentifier>{a6b239ef-e53b-497a-b611-debc7d17a0aa}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="hash">
+      <UniqueIdentifier>{b36e29ef-095c-4d7a-ad94-e18da4d8a01e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="storage">
+      <UniqueIdentifier>{0041e378-6c07-4093-8cbe-c536d3e7c7d7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="monitor">
+      <UniqueIdentifier>{c126c4da-f9d4-4dbb-9b0d-b02e6bc319b2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
+    <ClCompile Include="Utils.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="Hasher.cpp">
+      <Filter>hash</Filter>
+    </ClCompile>
+    <ClCompile Include="Storage.cpp">
+      <Filter>storage</Filter>
+    </ClCompile>
+    <ClCompile Include="Monitor.cpp">
+      <Filter>monitor</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Utils.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Hasher.h">
+      <Filter>hash</Filter>
+    </ClInclude>
+    <ClInclude Include="Storage.h">
+      <Filter>storage</Filter>
+    </ClInclude>
+    <ClInclude Include="Monitor.h">
+      <Filter>monitor</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
