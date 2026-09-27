@@ -6,6 +6,8 @@
 #include <string>
 #include <algorithm>
 #include <cwchar>
+#include <wincrypt.h>
+#include <vector>
 
 constexpr DWORD BUFFER_SIZE = 64 * 1024;
 const wchar_t* DEFAULT_WATCH_PATH = L"D:/Kours_SP_3/Test";
@@ -99,6 +101,91 @@ void CloseLogFile() {
     }
 }
 
+// Конвертация байтов хэша в hex-строку (нижний регистр)
+std::wstring BytesToHex(const BYTE* bytes, DWORD length) {
+    std::wstring hex;
+    hex.reserve(length * 2);
+    for (DWORD i = 0; i < length; i++) {
+        wchar_t buf[3];
+        swprintf_s(buf, L"%02x", bytes[i]);
+        hex += buf;
+    }
+    return hex;
+}
+
+// Вычисление SHA-256 для файла (ДИАГНОСТИЧЕСКАЯ ВЕРСИЯ)
+std::wstring ComputeSHA256(const std::wstring& filePath) {
+    HANDLE hFile = CreateFileW(
+        filePath.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
+    );
+
+    if (hFile == INVALID_HANDLE_VALUE) {
+        wprintf(L"[DEBUG] CreateFileW не смог открыть файл. Ошибка: %lu\n", GetLastError());
+        return L"";
+    }
+
+    HCRYPTPROV hProv = 0;
+    HCRYPTHASH hHash = 0;
+    std::wstring result;
+
+    // 1. Получаем контекст криптопровайдера
+    if (!CryptAcquireContextW(&hProv, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
+        DWORD err = GetLastError();
+        if (!CryptAcquireContextW(&hProv, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT | CRYPT_NEWKEYSET)) {
+            wprintf(L"[DEBUG] CryptAcquireContextW failed. Ошибка: %lu\n", err);
+            CloseHandle(hFile);
+            return L"";
+        }
+    }
+
+    // 2. Создаём объект хэша SHA-256
+    if (!CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash)) {
+        wprintf(L"[DEBUG] CryptCreateHash failed. Ошибка: %lu\n", GetLastError());
+        CryptReleaseContext(hProv, 0);
+        CloseHandle(hFile);
+        return L"";
+    }
+
+    // 3. Читаем файл чанками по 1 МБ
+    const DWORD CHUNK_SIZE = 1024 * 1024; // 1 МБ
+    std::vector<BYTE> buffer(CHUNK_SIZE);
+    DWORD bytesRead = 0;
+
+    bool hashSuccess = true;
+    while (ReadFile(hFile, buffer.data(), CHUNK_SIZE, &bytesRead, nullptr) && bytesRead > 0) {
+        if (!CryptHashData(hHash, buffer.data(), bytesRead, 0)) {
+            wprintf(L"[DEBUG] CryptHashData failed. Ошибка: %lu\n", GetLastError());
+            hashSuccess = false;
+            break;
+        }
+    }
+
+    // 4. Получаем итоговый хэш
+    if (hashSuccess) {
+        DWORD hashSize = 32; // SHA-256 = 32 байта
+        BYTE hashBytes[32];
+        if (CryptGetHashParam(hHash, HP_HASHVAL, hashBytes, &hashSize, 0)) {
+            result = BytesToHex(hashBytes, hashSize);
+        }
+        else {
+            wprintf(L"[DEBUG] CryptGetHashParam failed. Ошибка: %lu\n", GetLastError());
+        }
+    }
+
+    // 5. Освобождаем ресурсы
+    CryptDestroyHash(hHash);
+    CryptReleaseContext(hProv, 0);
+    CloseHandle(hFile);
+
+    return result;
+}
+
 std::wstring GetFileName(const std::wstring& path) {
     size_t pos = path.find_last_of(L"\\/");
     return (pos == std::wstring::npos) ? path : path.substr(pos + 1);
@@ -136,6 +223,20 @@ void LogEvent(const wchar_t* action, const std::wstring& filename) {
 int wmain(int argc, wchar_t** argv) {
     SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
     _setmode(_fileno(stdout), _O_U16TEXT);
+
+    // --- ТЕСТ ХЭШИРОВАНИЯ ---
+    wprintf(L"\n=== Тест хэширования ===\n");
+
+    // Хешируем файл лога, который мы точно только что создали!
+    std::wstring logHash = ComputeSHA256(L"logs\\chrono.log");
+    wprintf(L"Файл chrono.log: %ls\n", logHash.c_str());
+
+    // Или укажи полный путь к ЛЮБОМУ файлу, который ты точно видишь в папке
+    // std::wstring testHash = ComputeSHA256(L"D:\\Kours_SP_3\\Test\\ТвойРеальныйФайл.txt");
+    // wprintf(L"Твой файл: %ls\n", testHash.c_str());
+
+    wprintf(L"======================\n\n");
+    // --- КОНЕЦ ТЕСТА ---
 
     // 1. Инициализация лог-файла
     if (!InitLogFile(L"logs\\chrono.log")) {
